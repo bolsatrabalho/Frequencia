@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Sistema de Frequência</title>
+
+<style>
+    body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: Arial, Helvetica, sans-serif;
+        background: #f4f6f8;
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+    }
+
+    .container {
+        width: 95%;
+        max-width: 1400px;
+        background: #fff;
+        margin-top: 30px;
+        padding: 25px;
+        border-radius: 8px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+
+    h2 {
+        margin: 0 0 5px 0;
+        color: #333;
+    }
+
+    .info {
+        color: #555;
+        font-size: 14px;
+        margin-bottom: 20px;
+    }
+
+    .acoes {
+        margin-bottom: 15px;
+    }
+
+    button {
+        padding: 8px 14px;
+        border: none;
+        border-radius: 5px;
+        background: #0057b8;
+        color: #fff;
+        cursor: pointer;
+        font-size: 14px;
+    }
+
+    button:hover {
+        background: #004494;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+
+    th, td {
+        border: 1px solid #ccc;
+        padding: 6px;
+        text-align: center;
+    }
+
+    th {
+        background: #f0f0f0;
+    }
+
+    input[type="text"],
+    input[type="date"],
+    select {
+        width: 100%;
+        font-size: 12px;
+    }
+
+    .hidden {
+        display: none;
+    }
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <h2>Sistema de Frequência de Bolsistas</h2>
+    <div class="info" id="infoUsuario"></div>
+
+    <div class="acoes">
+        <button id="btnAdicionar" onclick="adicionarBolsista()">➕ Adicionar bolsista</button>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Campus</th>
+                <th>Nome</th>
+                <th>Matrícula</th>
+                <th>Setor</th>
+                <th>Início</th>
+                <th>Fim</th>
+                <th>Email Coordenador</th>
+
+                <th>Jan</th><th>Fev</th><th>Mar</th><th>Abr</th>
+                <th>Mai</th><th>Jun</th><th>Jul</th><th>Ago</th>
+                <th>Set</th><th>Out</th><th>Nov</th><th>Dez</th>
+
+                <th>Justificativa</th>
+                <th>Arquivo</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+    </table>
+
+</div>
+
+<script>
+/* =======================
+   CONTROLE DE USUÁRIO
+======================= */
+const emailUsuario = sessionStorage.getItem("emailUsuario");
+const tipoUsuario = sessionStorage.getItem("tipoUsuario");
+
+if (!emailUsuario || !tipoUsuario) {
+    alert("Acesso inválido.");
+    window.location.href = "index.html";
+}
+
+document.getElementById("infoUsuario").innerText =
+    `Usuário: ${emailUsuario} | Perfil: ${tipoUsuario === "admin" ? "Administrador" : "Coordenador"}`;
+
+// Apenas admin pode ver botão de adicionar
+if (tipoUsuario !== "admin") {
+    document.getElementById("btnAdicionar").classList.add("hidden");
+}
+
+/* =======================
+   DADOS (LOCAL - TEMP)
+======================= */
+let bolsistas = JSON.parse(localStorage.getItem("bolsistas")) || [];
+
+/* =======================
+   RENDERIZAÇÃO
+======================= */
+function renderTabela() {
+    const tbody = document.getElementById("tbody");
+    tbody.innerHTML = "";
+
+    bolsistas.forEach((b, index) => {
+
+        // Coordenador só vê seus bolsistas
+        if (tipoUsuario !== "admin" && b.coordenador !== emailUsuario) return;
+
+        const tr = document.createElement("tr");
+
+        tr.innerHTML = `
+            <td>${campoTexto(b.campus, index, "campus", tipoUsuario === "admin")}</td>
+            <td>${campoTexto(b.nome, index, "nome", tipoUsuario === "admin")}</td>
+            <td>${campoTexto(b.matricula, index, "matricula", tipoUsuario === "admin")}</td>
+            <td>${campoTexto(b.setor, index, "setor", tipoUsuario === "admin")}</td>
+            <td>${campoData(b.inicio, index, "inicio", tipoUsuario === "admin")}</td>
+            <td>${campoData(b.fim, index, "fim", tipoUsuario === "admin")}</td>
+            <td>${campoTexto(b.coordenador, index, "coordenador", tipoUsuario === "admin")}</td>
+
+            ${mesesHTML(b, index)}
+
+            <td>${campoTexto(b.justificativa, index, "justificativa", true)}</td>
+            <td><input type="file"></td>
+            <td>
+                ${tipoUsuario === "admin"
+                    ? `<button onclick="removerBolsista(${index})">Remover</button>`
+                    : ""}
+            </td>
+        `;
+
+        tbody.appendChild(tr);
+    });
+
+    salvar();
+}
+
+/* =======================
+   CAMPOS AUXILIARES
+======================= */
+function campoTexto(valor, i, campo, editavel) {
+    if (!editavel) return valor || "";
+    return `<input type="text" value="${valor || ""}" onchange="atualizar(${i}, '${campo}', this.value)">`;
+}
+
+function campoData(valor, i, campo, editavel) {
+    if (!editavel) return valor || "";
+    return `<input type="date" value="${valor || ""}" onchange="atualizar(${i}, '${campo}', this.value)">`;
+}
+
+function mesesHTML(b, i) {
+    let html = "";
+    for (let m = 0; m < 12; m++) {
+        const val = b.meses[m] || "NÃO";
+        html += `
+            <td>
+                <select onchange="atualizarMes(${i}, ${m}, this.value)">
+                    <option ${val === "SIM" ? "selected" : ""}>SIM</option>
+                    <option ${val === "NÃO" ? "selected" : ""}>NÃO</option>
+                </select>
+            </td>
+        `;
+    }
+    return html;
+}
+
+/* =======================
+   AÇÕES
+======================= */
+function atualizar(i, campo, valor) {
+    bolsistas[i][campo] = valor;
+    salvar();
+}
+
+function atualizarMes(i, mes, valor) {
+    bolsistas[i].meses[mes] = valor;
+    salvar();
+}
+
+function adicionarBolsista() {
+    bolsistas.push({
+        campus: "",
+        nome: "",
+        matricula: "",
+        setor: "",
+        inicio: "",
+        fim: "",
+        coordenador: "",
+        meses: Array(12).fill("NÃO"),
+        justificativa: ""
+    });
+    renderTabela();
+}
+
+function removerBolsista(i) {
+    if (confirm("Remover este bolsista?")) {
+        bolsistas.splice(i, 1);
+        renderTabela();
+    }
+}
+
+function salvar() {
+    localStorage.setItem("bolsistas", JSON.stringify(bolsistas));
+}
+
+/* =======================
+   INICIALIZA
+======================= */
+renderTabela();
+</script>
+
+</body>
+</html>
